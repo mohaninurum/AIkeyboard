@@ -3,7 +3,7 @@
     android:isDefault="true"
     android:supportsInlineSuggestions="true">
     <subtype
-        android:imeSubtypeLocale="en_US"
+        android:imeSubtypeLocale="en_IN"
         android:imeSubtypeMode="keyboard"
-        android:label="English (US)" />
+        android:label="AIKeyboard" />
 </input-method>
