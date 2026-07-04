@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'themes_screen.dart';
 
 void main() {
   runApp(const SystemKeyboardApp());
@@ -11,7 +12,7 @@ class SystemKeyboardApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'System Keyboard',
+      title: 'AIKeyboard',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: Colors.deepPurple,
@@ -70,7 +71,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 24),
               Text(
-                'Welcome to System Keyboard',
+                'Welcome to AIKeyboard',
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
@@ -113,8 +114,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 subtitle: const Text('Customize keyboard appearance'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Themes coming soon!')),
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const ThemesScreen()),
                   );
                 },
               ),

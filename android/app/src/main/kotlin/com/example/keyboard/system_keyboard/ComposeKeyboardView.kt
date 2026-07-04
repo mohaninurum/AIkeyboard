@@ -11,7 +11,21 @@ class ComposeKeyboardView(context: Context, private val keyPressListener: (Strin
 
     init {
         orientation = VERTICAL
-        setBackgroundColor(Color.parseColor("#1E1E1E"))
+        val sharedPref = context.getSharedPreferences("KeyboardSettings", Context.MODE_PRIVATE)
+        val themeName = sharedPref.getString("theme", "neon_cyan") ?: "neon_cyan"
+        
+        var bgColorStr = "#000000"
+        var keyBgColorStr = "#333333"
+        var glowColorStr = "#00FFFF"
+        
+        when (themeName) {
+            "neon_cyan" -> { bgColorStr = "#000000"; keyBgColorStr = "#333333"; glowColorStr = "#00FFFF" }
+            "neon_green" -> { bgColorStr = "#111111"; keyBgColorStr = "#333333"; glowColorStr = "#39FF14" }
+            "cyberpunk" -> { bgColorStr = "#2B0033"; keyBgColorStr = "#4B0082"; glowColorStr = "#FF00FF" }
+            "blood_red" -> { bgColorStr = "#000000"; keyBgColorStr = "#333333"; glowColorStr = "#FF0000" }
+        }
+
+        setBackgroundColor(Color.parseColor(bgColorStr))
         setPadding(0, 16, 0, 16)
 
         val keys = listOf(
@@ -33,15 +47,33 @@ class ComposeKeyboardView(context: Context, private val keyPressListener: (Strin
                     text = key
                     isAllCaps = false
                     setTextColor(Color.WHITE)
-                    setBackgroundColor(Color.parseColor("#333333"))
+                    setBackgroundColor(Color.parseColor(keyBgColorStr))
                     
                     val marginParams = LayoutParams(0, LayoutParams.MATCH_PARENT, if (key == "SPACE") 4f else 1f).apply {
                         setMargins(8, 8, 8, 8)
                     }
                     layoutParams = marginParams
 
-                    setOnClickListener {
-                        keyPressListener(key)
+                    setOnTouchListener { v, event ->
+                        val btn = v as Button
+                        when (event.action) {
+                            android.view.MotionEvent.ACTION_DOWN -> {
+                                btn.setBackgroundColor(android.graphics.Color.parseColor("#111111"))
+                                btn.setTextColor(android.graphics.Color.parseColor(glowColorStr))
+                                btn.setShadowLayer(30f, 0f, 0f, android.graphics.Color.parseColor(glowColorStr))
+                                btn.animate().scaleX(1.15f).scaleY(1.15f).setDuration(80).start()
+                            }
+                            android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                                btn.setBackgroundColor(android.graphics.Color.parseColor(keyBgColorStr))
+                                btn.setTextColor(android.graphics.Color.WHITE)
+                                btn.setShadowLayer(0f, 0f, 0f, android.graphics.Color.TRANSPARENT)
+                                btn.animate().scaleX(1.0f).scaleY(1.0f).setDuration(80).start()
+                                if (event.action == android.view.MotionEvent.ACTION_UP) {
+                                    keyPressListener(key)
+                                }
+                            }
+                        }
+                        true
                     }
                 }
                 rowLayout.addView(button)

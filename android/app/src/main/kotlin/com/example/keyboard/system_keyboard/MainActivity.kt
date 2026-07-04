@@ -18,6 +18,15 @@ class MainActivity : FlutterActivity() {
                     startActivity(intent)
                     result.success(true)
                 }
+                "setTheme" -> {
+                    val themeName = call.argument<String>("themeName") ?: "neon_cyan"
+                    val sharedPref = getSharedPreferences("KeyboardSettings", android.content.Context.MODE_PRIVATE)
+                    with (sharedPref.edit()) {
+                        putString("theme", themeName)
+                        apply()
+                    }
+                    result.success(true)
+                }
                 else -> {
                     result.notImplemented()
                 }
