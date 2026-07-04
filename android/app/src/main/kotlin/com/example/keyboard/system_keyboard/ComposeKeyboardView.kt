@@ -118,11 +118,24 @@ class ComposeKeyboardView(context: Context, private val keyPressListener: (Strin
 
     private val bottomRow = listOf("!#1", "🌐", "'", "English(India)", ".", "﹀", "🔍")
 
+    private var bottomInsetPx = 0
+
     init {
         orientation = VERTICAL
         initSoundPool()
         // Very tight padding like the screenshot
         setPadding(4, 12, 4, 12)
+        
+        setOnApplyWindowInsetsListener { _, insets ->
+            bottomInsetPx = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                insets.getInsets(android.view.WindowInsets.Type.navigationBars() or android.view.WindowInsets.Type.systemBars()).bottom
+            } else {
+                insets.systemWindowInsetBottom
+            }
+            setPadding(4, 12, 4, bottomInsetPx + 12)
+            requestLayout()
+            insets
+        }
         buildLayout()
     }
 
@@ -130,7 +143,7 @@ class ComposeKeyboardView(context: Context, private val keyPressListener: (Strin
         // Enforce a specific, taller height for the entire keyboard
         val desiredHeightDp = 320f
         val heightPx = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, desiredHeightDp, resources.displayMetrics).toInt()
-        val customHeightMeasureSpec = MeasureSpec.makeMeasureSpec(heightPx, MeasureSpec.EXACTLY)
+        val customHeightMeasureSpec = MeasureSpec.makeMeasureSpec(heightPx + bottomInsetPx, MeasureSpec.EXACTLY)
         super.onMeasure(widthMeasureSpec, customHeightMeasureSpec)
     }
 
