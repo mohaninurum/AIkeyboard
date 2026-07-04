@@ -31,7 +31,7 @@ class KeyboardService : InputMethodService() {
         "kai", "kathe", "jaano", "aayo", "choro", "chori", "kha", "pivo", "bhari", 
         "motiyar", "dikra", "kahu", "padio", "jaye", "karto", "kay", "katha", 
         "jana", "aana", "bhaya", "dada", "bhiya", "bataw", "riyo", "he", "ni", 
-        "tharo", "maro", "hove", "aai", "gai", "dikro" "kar" "rayu"
+        "tharo", "maro", "hove", "aai", "gai", "dikro", "kar", "rayu"
     )
 
     override fun onCreateInputView(): View {
