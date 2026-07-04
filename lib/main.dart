@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'themes_screen.dart';
+import 'sounds_screen.dart';
 
 void main() {
   runApp(const SystemKeyboardApp());
@@ -136,6 +137,18 @@ class _HomeScreenState extends State<HomeScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const ThemesScreen()),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.volume_up),
+                title: const Text('Keypress Sound'),
+                subtitle: const Text('Change keyboard typing sounds'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const SoundsScreen()),
                   );
                 },
               ),

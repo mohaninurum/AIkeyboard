@@ -9,6 +9,8 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.widget.Button
 import android.widget.LinearLayout
+import android.media.AudioAttributes
+import android.media.SoundPool
 
 class ComposeKeyboardView(context: Context, private val keyPressListener: (String) -> Unit) : LinearLayout(context) {
 
@@ -17,6 +19,9 @@ class ComposeKeyboardView(context: Context, private val keyPressListener: (Strin
     private var currentKeyBgColor = "#262626"
     private var currentKeyboardBg = "#111111"
     private var currentBorderColor = "#383838"
+    private var currentSound = "default"
+    private var isSoundEnabled = true
+    private var isHapticEnabled = true
 
     private val repeatHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var deleteRunnable: Runnable? = null
@@ -30,6 +35,34 @@ class ComposeKeyboardView(context: Context, private val keyPressListener: (Strin
     private var topContainer: android.widget.FrameLayout? = null
     private var toolbarLayoutContainer: LinearLayout? = null
     private var suggestionContainer: LinearLayout? = null
+
+    private var soundPool: SoundPool? = null
+    private val soundMap = mutableMapOf<String, Int>()
+
+    private var keyPreviewPopup: android.widget.PopupWindow? = null
+    private var keyPreviewText: android.widget.TextView? = null
+
+
+
+    private fun initSoundPool() {
+        val audioAttributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_MEDIA) // Use media volume to bypass strict system sound restrictions
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
+            
+        soundPool = SoundPool.Builder()
+            .setMaxStreams(5)
+            .setAudioAttributes(audioAttributes)
+            .build()
+            
+        soundPool?.let { pool ->
+            soundMap["default"] = pool.load(context, R.raw.click, 1)
+            soundMap["mechanical"] = pool.load(context, R.raw.mechanical, 1)
+            soundMap["typewriter"] = pool.load(context, R.raw.typewriter, 1)
+            soundMap["water_drop"] = pool.load(context, R.raw.water, 1)
+            soundMap["wood"] = pool.load(context, R.raw.wood, 1)
+        }
+    }
     
     fun updateSuggestions(words: List<String>) {
         if (words.isEmpty()) {
@@ -87,6 +120,7 @@ class ComposeKeyboardView(context: Context, private val keyPressListener: (Strin
 
     init {
         orientation = VERTICAL
+        initSoundPool()
         // Very tight padding like the screenshot
         setPadding(4, 12, 4, 12)
         buildLayout()
@@ -294,13 +328,16 @@ class ComposeKeyboardView(context: Context, private val keyPressListener: (Strin
                         when (event.action) {
                             MotionEvent.ACTION_DOWN -> {
                                 // Standard Haptic & Sound
-                                btn.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                                btn.playSoundEffect(android.view.SoundEffectConstants.CLICK)
+                                if (isHapticEnabled) {
+                                    btn.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                }
+                                playKeySound(btn)
                                 
                                 btn.background = createKeyBackground(currentKeyBgColor, currentGlowColor, isPressed = true)
                                 btn.setTextColor(Color.parseColor(currentGlowColor))
                                 btn.setShadowLayer(25f, 0f, 0f, Color.parseColor(currentGlowColor))
                                 btn.animate().scaleX(1.1f).scaleY(1.1f).setDuration(50).start()
+                                showKeyPreview(btn)
                                 
                                 if (key == "⌫" || key == "DEL") {
                                     handleInternalKey(btn.text.toString()) // Trigger first delete immediately
@@ -318,6 +355,7 @@ class ComposeKeyboardView(context: Context, private val keyPressListener: (Strin
                                 btn.setTextColor(Color.WHITE)
                                 btn.setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
                                 btn.animate().scaleX(1.0f).scaleY(1.0f).setDuration(100).start()
+                                hideKeyPreview()
                                 
                                 if (key == "⌫" || key == "DEL") {
                                     deleteRunnable?.let { repeatHandler.removeCallbacks(it) }
@@ -425,8 +463,10 @@ class ComposeKeyboardView(context: Context, private val keyPressListener: (Strin
                     setOnTouchListener { v, event ->
                         when (event.action) {
                             MotionEvent.ACTION_DOWN -> {
-                                v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                                v.playSoundEffect(android.view.SoundEffectConstants.CLICK)
+                                if (isHapticEnabled) {
+                                    v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                }
+                                playKeySound(v)
                                 v.animate().scaleX(1.3f).scaleY(1.3f).setDuration(50).start()
                             }
                             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -469,8 +509,13 @@ class ComposeKeyboardView(context: Context, private val keyPressListener: (Strin
             "https://media.giphy.com/media/xT0xeJpnrWC4XWblWQ/giphy.gif"
         )
 
+        val mainContainer = LinearLayout(context).apply {
+            orientation = VERTICAL
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, 0, 5f)
+        }
+
         val scroll = android.widget.ScrollView(context).apply {
-            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f)
         }
         
         val container = LinearLayout(context).apply {
@@ -544,7 +589,52 @@ class ComposeKeyboardView(context: Context, private val keyPressListener: (Strin
         }
 
         scroll.addView(container)
-        addView(scroll)
+        mainContainer.addView(scroll)
+
+        // Add bottom bar with Back Button
+        val bottomBar = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 10, 0, 20)
+            }
+        }
+        
+        val backBtn = Button(context).apply {
+            text = "⇦ Back to Keyboard"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            textSize = 16f
+            typeface = Typeface.DEFAULT_BOLD
+            background = createKeyBackground(currentKeyBgColor, currentBorderColor, false)
+            layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+                setPadding(60, 20, 60, 20)
+            }
+            
+            setOnTouchListener { v, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        v.background = createKeyBackground(currentKeyBgColor, currentGlowColor, true)
+                        if (isHapticEnabled) {
+                            v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                        }
+                        playKeySound(v)
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        v.background = createKeyBackground(currentKeyBgColor, currentBorderColor, false)
+                        if (event.action == MotionEvent.ACTION_UP) {
+                            isGifMode = false
+                            buildLayout()
+                        }
+                    }
+                }
+                true
+            }
+        }
+        bottomBar.addView(backBtn)
+        mainContainer.addView(bottomBar)
+
+        addView(mainContainer)
     }
 
     private fun handleInternalKey(key: String) {
@@ -585,9 +675,101 @@ class ComposeKeyboardView(context: Context, private val keyPressListener: (Strin
         return drawable
     }
 
+    private fun playKeySound(v: android.view.View) {
+        if (!isSoundEnabled || currentSound == "none") return
+        
+        val soundId = soundMap[currentSound] ?: soundMap["default"]
+        if (soundId != null) {
+            soundPool?.play(soundId, 1.0f, 1.0f, 1, 0, 1.0f)
+        }
+    }
+
+    private fun showKeyPreview(btn: Button) {
+        val text = btn.text.toString()
+        if (text.length > 1 || text == "⇧" || text == "⌫" || text == "🌐" || text == "🔍" || text == "﹀") return 
+
+        if (keyPreviewPopup == null) {
+            keyPreviewText = android.widget.TextView(context).apply {
+                gravity = Gravity.CENTER
+                textSize = 36f
+                setTextColor(Color.WHITE)
+                typeface = Typeface.DEFAULT_BOLD
+            }
+            keyPreviewPopup = android.widget.PopupWindow(keyPreviewText, LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+                isTouchable = false
+                isClippingEnabled = false
+                elevation = 15f
+            }
+        }
+
+        keyPreviewText?.text = text
+        val popupBg = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = 24f
+            setColor(Color.parseColor(currentKeyBgColor))
+            setStroke(2, Color.parseColor(currentBorderColor))
+        }
+        keyPreviewText?.background = popupBg
+        
+        val popupWidth = (btn.width * 1.5).toInt()
+        val popupHeight = (btn.height * 1.8).toInt()
+        
+        keyPreviewPopup?.width = popupWidth
+        keyPreviewPopup?.height = popupHeight
+
+        val loc = IntArray(2)
+        btn.getLocationInWindow(loc)
+        
+        val x = loc[0] - (popupWidth - btn.width) / 2
+        val y = loc[1] - popupHeight + (btn.height / 3)
+
+        if (keyPreviewPopup?.isShowing == true) {
+            keyPreviewPopup?.update(x, y, popupWidth, popupHeight)
+            // If it was animating to dismiss, cancel it and restore
+            keyPreviewText?.animate()?.cancel()
+            keyPreviewText?.alpha = 1f
+            keyPreviewText?.scaleX = 1f
+            keyPreviewText?.scaleY = 1f
+        } else {
+            keyPreviewText?.alpha = 0f
+            keyPreviewText?.scaleX = 0.5f
+            keyPreviewText?.scaleY = 0.5f
+            keyPreviewPopup?.showAtLocation(btn, Gravity.NO_GRAVITY, x, y)
+            
+            keyPreviewText?.animate()?.cancel()
+            keyPreviewText?.animate()
+                ?.alpha(1f)
+                ?.scaleX(1f)
+                ?.scaleY(1f)
+                ?.setDuration(100)
+                ?.setInterpolator(android.view.animation.OvershootInterpolator())
+                ?.withEndAction(null)
+                ?.start()
+        }
+    }
+
+    private fun hideKeyPreview() {
+        if (keyPreviewPopup?.isShowing == true) {
+            keyPreviewText?.animate()?.cancel()
+            keyPreviewText?.animate()
+                ?.alpha(0f)
+                ?.scaleX(0.8f)
+                ?.scaleY(0.8f)
+                ?.setDuration(100)
+                ?.setInterpolator(android.view.animation.AccelerateInterpolator())
+                ?.withEndAction {
+                    keyPreviewPopup?.dismiss()
+                }
+                ?.start()
+        }
+    }
+
     fun updateTheme() {
         val sharedPref = context.getSharedPreferences("KeyboardSettings", Context.MODE_PRIVATE)
         val themeName = sharedPref.getString("theme", "neon_cyan") ?: "neon_cyan"
+        currentSound = sharedPref.getString("sound", "default") ?: "default"
+        isSoundEnabled = sharedPref.getBoolean("soundEnabled", true)
+        isHapticEnabled = sharedPref.getBoolean("hapticEnabled", true)
         
         when (themeName) {
             "neon_cyan" -> { 

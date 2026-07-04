@@ -80,8 +80,17 @@ class KeyboardService : InputMethodService() {
                 // Handled internally by ComposeKeyboardView
             }
             "🌐" -> {
-                val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
-                imm.showInputMethodPicker()
+                try {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                        switchToNextInputMethod(false)
+                    } else {
+                        val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                        imm.showInputMethodPicker()
+                    }
+                } catch (e: Exception) {
+                    val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                    imm.showInputMethodPicker()
+                }
             }
             "﹀" -> {
                 requestHideSelf(0)
@@ -174,7 +183,7 @@ class KeyboardService : InputMethodService() {
                 // Commit Content on Main Thread
                 android.os.Handler(android.os.Looper.getMainLooper()).post {
                     val uri = androidx.core.content.FileProvider.getUriForFile(
-                        this,
+                        this@KeyboardService,
                         "com.example.keyboard.fileprovider",
                         file
                     )
@@ -182,24 +191,56 @@ class KeyboardService : InputMethodService() {
                     val description = android.content.ClipDescription("GIF", arrayOf("image/gif"))
                     val info = androidx.core.view.inputmethod.InputContentInfoCompat(uri, description, null)
                     
-                    val success = androidx.core.view.inputmethod.InputConnectionCompat.commitContent(
-                        ic,
-                        currentInputEditorInfo,
-                        info,
-                        androidx.core.view.inputmethod.InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION,
-                        null
-                    )
+                    val editorInfo = currentInputEditorInfo
+                    val mimeTypes = androidx.core.view.inputmethod.EditorInfoCompat.getContentMimeTypes(editorInfo)
                     
-                    if (!success) {
-                        android.widget.Toast.makeText(this, "GIF not supported in this text field", android.widget.Toast.LENGTH_SHORT).show()
+                    var supported = false
+                    for (mime in mimeTypes) {
+                        if (android.content.ClipDescription.compareMimeTypes(mime, "image/gif")) {
+                            supported = true
+                            break
+                        }
+                    }
+
+                    if (supported) {
+                        val success = androidx.core.view.inputmethod.InputConnectionCompat.commitContent(
+                            ic,
+                            editorInfo,
+                            info,
+                            androidx.core.view.inputmethod.InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION,
+                            null
+                        )
+                        if (!success) {
+                            fallbackShareGif(uri)
+                        }
+                    } else {
+                        // Not supported by the text field, fallback to share intent
+                        fallbackShareGif(uri)
                     }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
                 android.os.Handler(android.os.Looper.getMainLooper()).post {
-                    android.widget.Toast.makeText(this, "Failed to load GIF", android.widget.Toast.LENGTH_SHORT).show()
+                    android.widget.Toast.makeText(this@KeyboardService, "Failed to load GIF", android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
         }.start()
+    }
+
+    private fun fallbackShareGif(uri: android.net.Uri) {
+        try {
+            val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = "image/gif"
+                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            val chooser = android.content.Intent.createChooser(shareIntent, "Share GIF").apply {
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(chooser)
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(this, "GIF not supported in this text field", android.widget.Toast.LENGTH_SHORT).show()
+        }
     }
 }
