@@ -18,6 +18,11 @@ class MainActivity : FlutterActivity() {
                     startActivity(intent)
                     result.success(true)
                 }
+                "showInputMethodPicker" -> {
+                    val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                    imm.showInputMethodPicker()
+                    result.success(true)
+                }
                 "setTheme" -> {
                     val themeName = call.argument<String>("themeName") ?: "neon_cyan"
                     val sharedPref = getSharedPreferences("KeyboardSettings", android.content.Context.MODE_PRIVATE)

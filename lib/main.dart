@@ -51,6 +51,14 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _showInputMethodPicker() async {
+    try {
+      await platform.invokeMethod('showInputMethodPicker');
+    } on PlatformException catch (e) {
+      debugPrint("Failed to show picker: '${e.message}'.");
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -85,7 +93,20 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 48),
+              const SizedBox(height: 32),
+              TextField(
+                decoration: InputDecoration(
+                  labelText: 'Test your keyboard here',
+                  hintText: 'Type something...',
+                  prefixIcon: const Icon(Icons.edit),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  filled: true,
+                  fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                ),
+              ),
+              const SizedBox(height: 32),
               _buildStepCard(
                 context,
                 title: 'Step 1: Enable Keyboard',
@@ -100,9 +121,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 description: 'Set this keyboard as your default input method.',
                 icon: Icons.check_circle_outline,
                 onTap: () {
-                  // In a real app this could show the input method picker.
-                  // For now we'll just open the settings as well or rely on the user.
-                  _openKeyboardSettings();
+                  _showInputMethodPicker();
                 },
               ),
               const SizedBox(height: 32),
