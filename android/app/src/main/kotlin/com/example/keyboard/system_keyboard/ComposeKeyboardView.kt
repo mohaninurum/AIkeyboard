@@ -25,6 +25,49 @@ class ComposeKeyboardView(context: Context, private val keyPressListener: (Strin
     private var isCaps = false
     private var isEmojiMode = false
     private var isGifMode = false
+    private var currentEmojiCategory = "🙂"
+    
+    private var topContainer: android.widget.FrameLayout? = null
+    private var toolbarLayoutContainer: LinearLayout? = null
+    private var suggestionContainer: LinearLayout? = null
+    
+    fun updateSuggestions(words: List<String>) {
+        if (words.isEmpty()) {
+            suggestionContainer?.parent?.let { (it as android.view.View).visibility = android.view.View.GONE }
+            toolbarLayoutContainer?.visibility = android.view.View.VISIBLE
+            return
+        }
+        
+        toolbarLayoutContainer?.visibility = android.view.View.GONE
+        suggestionContainer?.parent?.let { (it as android.view.View).visibility = android.view.View.VISIBLE }
+        
+        suggestionContainer?.removeAllViews()
+        for (word in words) {
+            val btn = Button(context).apply {
+                text = word
+                textSize = 16f
+                setTextColor(Color.WHITE)
+                background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
+                setPadding(40, 0, 40, 0)
+                minWidth = 0
+                minimumWidth = 0
+                isAllCaps = false
+                layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT)
+                
+                setOnClickListener {
+                    (context as KeyboardService).commitSuggestion(word)
+                }
+            }
+            suggestionContainer?.addView(btn)
+            
+            // Separator
+            val sep = android.view.View(context).apply {
+                layoutParams = LayoutParams(2, LayoutParams.MATCH_PARENT).apply { setMargins(10, 20, 10, 20) }
+                setBackgroundColor(Color.parseColor("#444444"))
+            }
+            suggestionContainer?.addView(sep)
+        }
+    }
 
     private val numberRow = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0")
     
@@ -40,7 +83,7 @@ class ComposeKeyboardView(context: Context, private val keyPressListener: (Strin
         listOf("⇧", ")", "'", "\"", ":", ";", ",", "?", "⌫")
     )
 
-    private val bottomRow = listOf("!#1", "🌐", "'", "English(India)", ".", "🔍")
+    private val bottomRow = listOf("!#1", "🌐", "'", "English(India)", ".", "﹀", "🔍")
 
     init {
         orientation = VERTICAL
@@ -49,19 +92,69 @@ class ComposeKeyboardView(context: Context, private val keyPressListener: (Strin
         buildLayout()
     }
 
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        // Enforce a specific, taller height for the entire keyboard
+        val desiredHeightDp = 320f
+        val heightPx = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, desiredHeightDp, resources.displayMetrics).toInt()
+        val customHeightMeasureSpec = MeasureSpec.makeMeasureSpec(heightPx, MeasureSpec.EXACTLY)
+        super.onMeasure(widthMeasureSpec, customHeightMeasureSpec)
+    }
+
+    fun setAutoCaps(caps: Boolean) {
+        if (isCaps != caps && !isEmojiMode && !isGifMode && !isSymbolMode) {
+            isCaps = caps
+            updateCapsUI()
+        }
+    }
+
+    private fun updateCapsUI() {
+        for (btn in buttons) {
+            val text = btn.text.toString()
+            if (text.length == 1 && text[0].isLetter() && text != "⇧" && text != "⌫") {
+                btn.text = if (isCaps) text.uppercase() else text.lowercase()
+            } else if (text == "⇧") {
+                if (isCaps) {
+                    btn.setTextColor(Color.parseColor(currentGlowColor))
+                } else {
+                    btn.setTextColor(Color.WHITE)
+                }
+            }
+        }
+    }
+
     private fun buildLayout() {
         removeAllViews()
         buttons.clear()
 
-        // --- TOOLBAR ---
-        val toolbarIcons = listOf("⌨", "✿", "🎫", "🙂", "GIF", "✨", "👤", "+")
-        val toolbarLayout = LinearLayout(context).apply {
-            orientation = HORIZONTAL
-            gravity = Gravity.CENTER
+        // --- TOP BAR (Toolbar + Suggestions) ---
+        topContainer = android.widget.FrameLayout(context).apply {
             layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, 0, 0.8f).apply {
                 setMargins(0, 4, 0, 12)
             }
         }
+        
+        val toolbarIcons = listOf("⌨", "✿", "🎫", "🙂", "GIF", "✨", "👤", "+")
+        toolbarLayoutContainer = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER
+            layoutParams = android.widget.FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+        }
+        
+        val suggestionScroll = android.widget.HorizontalScrollView(context).apply {
+            layoutParams = android.widget.FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+            isHorizontalScrollBarEnabled = false
+            visibility = android.view.View.GONE // Hidden by default
+        }
+        suggestionContainer = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = android.widget.FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+        }
+        suggestionScroll.addView(suggestionContainer)
+        
+        topContainer?.addView(toolbarLayoutContainer)
+        topContainer?.addView(suggestionScroll)
+        addView(topContainer)
         for (icon in toolbarIcons) {
             val btn = Button(context).apply {
                 text = icon
@@ -86,8 +179,12 @@ class ComposeKeyboardView(context: Context, private val keyPressListener: (Strin
                 }
                 textSize = 18f
                 stateListAnimator = null
+                setPadding(0, 0, 0, 0)
+                minWidth = 0
+                minimumWidth = 0
+                isAllCaps = false
                 layoutParams = LayoutParams(0, LayoutParams.MATCH_PARENT, 1f).apply {
-                    setMargins(8, 0, 8, 0)
+                    setMargins(4, 0, 4, 0)
                 }
                 
                 setOnTouchListener { _, event ->
@@ -109,9 +206,8 @@ class ComposeKeyboardView(context: Context, private val keyPressListener: (Strin
                     true
                 }
             }
-            toolbarLayout.addView(btn)
+            toolbarLayoutContainer?.addView(btn)
         }
-        addView(toolbarLayout)
 
         if (isEmojiMode) {
             buildEmojiLayout()
@@ -175,8 +271,9 @@ class ComposeKeyboardView(context: Context, private val keyPressListener: (Strin
                     }
                     
                     val weight = when (key.lowercase()) {
-                        "english(india)", "space" -> 4.5f
+                        "english(india)", "space" -> 4.0f
                         "🔍", "⇧", "⌫", "!#1", "abc" -> 1.5f
+                        "🌐", "﹀" -> 1.0f
                         else -> 1f
                     }
                     
@@ -187,23 +284,29 @@ class ComposeKeyboardView(context: Context, private val keyPressListener: (Strin
                     stateListAnimator = null // Remove default Android shadow
                     setAllCaps(false)
                     setPadding(0, 0, 0, 0) // Remove internal padding to maximize space
-                    
-                    setPadding(0, 0, 0, 0) // Remove internal padding to maximize space
+                    minWidth = 0
+                    minimumWidth = 0
+                    minHeight = 0
+                    minimumHeight = 0
 
                     setOnTouchListener { v, event ->
                         val btn = v as Button
                         when (event.action) {
                             MotionEvent.ACTION_DOWN -> {
+                                // Standard Haptic & Sound
+                                btn.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                btn.playSoundEffect(android.view.SoundEffectConstants.CLICK)
+                                
                                 btn.background = createKeyBackground(currentKeyBgColor, currentGlowColor, isPressed = true)
                                 btn.setTextColor(Color.parseColor(currentGlowColor))
                                 btn.setShadowLayer(25f, 0f, 0f, Color.parseColor(currentGlowColor))
                                 btn.animate().scaleX(1.1f).scaleY(1.1f).setDuration(50).start()
                                 
                                 if (key == "⌫" || key == "DEL") {
-                                    handleInternalKey(key) // Trigger first delete immediately
+                                    handleInternalKey(btn.text.toString()) // Trigger first delete immediately
                                     deleteRunnable = object : Runnable {
                                         override fun run() {
-                                            handleInternalKey(key)
+                                            handleInternalKey(btn.text.toString())
                                             repeatHandler.postDelayed(this, 50) // Repeat every 50ms
                                         }
                                     }
@@ -220,7 +323,7 @@ class ComposeKeyboardView(context: Context, private val keyPressListener: (Strin
                                     deleteRunnable?.let { repeatHandler.removeCallbacks(it) }
                                     deleteRunnable = null
                                 } else if (event.action == MotionEvent.ACTION_UP) {
-                                    handleInternalKey(key)
+                                    handleInternalKey(btn.text.toString())
                                 }
                             }
                         }
@@ -238,7 +341,7 @@ class ComposeKeyboardView(context: Context, private val keyPressListener: (Strin
 
     private fun buildEmojiLayout() {
         // Emoji Category Row
-        val categoryIcons = listOf("🔍", "🕒", "🙂", "🐶", "🍴", "🏠", "🏀", "📖", "⁉", "🏳")
+        val categoryIcons = listOf("🕒", "🙂", "🐶", "🍴", "🏠", "🏀", "📖", "⁉", "🏳")
         val categoryLayout = LinearLayout(context).apply {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER
@@ -250,44 +353,84 @@ class ComposeKeyboardView(context: Context, private val keyPressListener: (Strin
             val btn = android.widget.TextView(context).apply {
                 text = icon
                 gravity = Gravity.CENTER
-                setTextColor(Color.parseColor("#BBBBBB"))
+                if (icon == currentEmojiCategory) {
+                    setTextColor(Color.parseColor("#FFCC00"))
+                    val highlightBg = android.graphics.drawable.GradientDrawable().apply {
+                        setColor(Color.parseColor("#333333"))
+                        cornerRadius = 20f
+                    }
+                    background = highlightBg
+                } else {
+                    setTextColor(Color.parseColor("#BBBBBB"))
+                    background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
+                }
                 textSize = 18f
                 layoutParams = LayoutParams(0, LayoutParams.MATCH_PARENT, 1f)
+                
+                setOnTouchListener { _, event ->
+                    if (event.action == MotionEvent.ACTION_UP) {
+                        currentEmojiCategory = icon
+                        buildLayout()
+                    }
+                    true
+                }
             }
             categoryLayout.addView(btn)
         }
         addView(categoryLayout)
 
-        // Emoji Grid (5 rows x 8 columns) matching screenshot exactly
-        val emojiRows = listOf(
-            listOf("😆", "🤪", "👋", "☝", "🏍", "👍", "🎂", "😐"),
-            listOf("😂", "🚌", "❤", "😘", "🤭", "💋", "🤔", "😒"),
-            listOf("🧡", "😴", "🍵", "🎊", "😅", "😇", "🥰", "🌚"),
-            listOf("🥚", "😊", "✅", "🤒", "😍", "📱", "🔑", "🤩"),
-            listOf("🥳", "🏡", "🐔", "😌", "🚫", "💯", "🚗", "🇮🇳")
+        val emojiMap = mapOf(
+            "🕒" to listOf("👍", "❤", "😂", "😘", "🙏", "🔥", "😊", "✨", "💯", "😍", "🎉", "👌", "👏", "🙌", "😁", "😎"),
+            "🙂" to listOf("😆", "🤪", "👋", "☝", "🏍", "👍", "🎂", "😐", "😂", "🚌", "❤", "😘", "🤭", "💋", "🤔", "😒", "🧡", "😴", "🍵", "🎊", "😅", "😇", "🥰", "🌚", "🥚", "😊", "✅", "🤒", "😍", "📱", "🔑", "🤩", "🥳", "🏡", "🐔", "😌", "🚫", "💯", "🚗", "🇮🇳", "😁", "😉", "😎", "😜", "😏", "😷", "🤠", "🥺"),
+            "🐶" to listOf("🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐸", "🐵", "🐒", "🐔", "🐧", "🐦", "🐤", "🐣", "🐥", "🦆", "🦅", "🦉", "🦇", "🐺", "🐗", "🐴", "🦄", "🐝", "🐛", "🦋", "🐌", "🐞", "🐜"),
+            "🍴" to listOf("🍏", "🍎", "🍐", "🍊", "🍋", "🍌", "🍉", "🍇", "🍓", "🍈", "🍒", "🍑", "🍍", "🥥", "🥝", "🍅", "🍆", "🥑", "🥦", "🥒", "🌶", "🌽", "🥕", "🥔", "🍠", "🥐", "🍞", "🥖", "🥨", "🧀", "🥚", "🍳", "🥞", "🥓", "🥩", "🍗", "🍖", "🌭", "🍔", "🍟", "🍕"),
+            "🏠" to listOf("🏠", "🏡", "🏢", "🏣", "🏤", "🏥", "🏦", "🏨", "🏩", "🏪", "🏫", "🏬", "🏭", "🏯", "🏰", "💒", "🗼", "🗽", "⛪", "🕌", "🕍", "⛩", "🕋", "⛲", "⛺", "🌁", "🌃", "🏙", "🌄", "🌅", "🌆", "🌇", "🌉", "♨", "🌌", "🎠", "🎡", "🎢", "💈", "🎪"),
+            "🏀" to listOf("⚽", "⚾", "🏀", "🏐", "🏈", "🏉", "🎾", "🎳", "🏏", "🏑", "🏒", "🥍", "🏓", "🏸", "🥊", "🥋", "🥅", "⛳", "⛸", "🎣", "🎽", "🎿", "🛷", "🥌", "🎯", "🎱", "🔮", "🧿", "🎮", "🕹", "🎰", "🎲", "🧩", "🧸", "♠", "♥", "♦", "♣", "♟", "🃏"),
+            "📖" to listOf("⌚", "📱", "📲", "💻", "⌨", "🖥", "🖨", "🖱", "🖲", "🕹", "🗜", "💽", "💾", "💿", "📀", "📼", "📷", "📸", "📹", "🎥", "📽", "🎞", "📞", "☎", "📟", "📠", "📺", "📻", "🎙", "🎚", "🎛", "🧭", "⏱", "⏲", "⏰", "🕰", "⌛", "⏳", "📡", "🔋", "🔌"),
+            "⁉" to listOf("❤", "🧡", "💛", "💚", "💙", "💜", "🖤", "💔", "❣", "💕", "💞", "💓", "💗", "💖", "💘", "💝", "💟", "☮", "✝", "☪", "🕉", "☸", "✡", "🔯", "🕎", "☯", "☦", "🛐", "⛎", "♈", "♉", "♊", "♋", "♌", "♍", "♎", "♏", "♐", "♑", "♒", "♓", "♓"),
+            "🏳" to listOf("🏁", "🚩", "🎌", "🏴", "🏳", "🏳️‍🌈", "🏴‍☠️", "🇦🇫", "🇦🇽", "🇦🇱", "🇩🇿", "🇦🇸", "🇦🇩", "🇦🇴", "🇦🇮", "🇦🇶", "🇦🇬", "🇦🇷", "🇦🇲", "🇦🇼", "🇦🇺", "🇦🇹", "🇦🇿", "🇧🇸", "🇧🇭", "🇧🇩", "🇧🇧", "🇧🇾", "🇧🇪", "🇧🇿", "🇧🇯", "🇧🇲", "🇧🇹", "🇧🇴", "🇧🇦", "🇧🇼", "🇧🇷", "🇮🇴", "🇻🇬")
         )
 
+        val currentEmojis = emojiMap[currentEmojiCategory] ?: emojiMap["🙂"]!!
+
+        val scroll = android.widget.ScrollView(context).apply {
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, 0, 5f)
+        }
+        
+        val gridContainer = LinearLayout(context).apply {
+            orientation = VERTICAL
+        }
+
+        val emojiRows = currentEmojis.chunked(8)
         for (row in emojiRows) {
             val rowLayout = LinearLayout(context).apply {
                 orientation = HORIZONTAL
                 gravity = Gravity.CENTER
-                layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f)
+                layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(0, 8, 0, 8)
+                }
             }
+            
             for (emoji in row) {
                 val btn = Button(context).apply {
                     text = emoji
-                    textSize = 26f
+                    textSize = 28f
                     background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
                     stateListAnimator = null
-                    layoutParams = LayoutParams(0, LayoutParams.MATCH_PARENT, 1f)
+                    setPadding(0, 0, 0, 0)
+                    minWidth = 0
+                    minimumWidth = 0
+                    layoutParams = LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
                     
-                    setOnTouchListener { _, event ->
+                    setOnTouchListener { v, event ->
                         when (event.action) {
                             MotionEvent.ACTION_DOWN -> {
-                                animate().scaleX(1.3f).scaleY(1.3f).setDuration(50).start()
+                                v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                v.playSoundEffect(android.view.SoundEffectConstants.CLICK)
+                                v.animate().scaleX(1.3f).scaleY(1.3f).setDuration(50).start()
                             }
                             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                                animate().scaleX(1.0f).scaleY(1.0f).setDuration(100).start()
+                                v.animate().scaleX(1.0f).scaleY(1.0f).setDuration(100).start()
                                 if (event.action == MotionEvent.ACTION_UP) {
                                     keyPressListener(emoji)
                                 }
@@ -298,16 +441,32 @@ class ComposeKeyboardView(context: Context, private val keyPressListener: (Strin
                 }
                 rowLayout.addView(btn)
             }
-            addView(rowLayout)
+            
+            if (row.size < 8) {
+                val missing = 8 - row.size
+                for (i in 0 until missing) {
+                    val empty = android.view.View(context).apply {
+                        layoutParams = LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
+                    }
+                    rowLayout.addView(empty)
+                }
+            }
+            
+            gridContainer.addView(rowLayout)
         }
+        
+        scroll.addView(gridContainer)
+        addView(scroll)
     }
 
     private fun buildGifLayout() {
         val gifOptions = listOf(
-            Pair("🐱 Cat Typing GIF", "https://media.giphy.com/media/JIX9t2j0ZTN9S/giphy.gif"),
-            Pair("😂 Laughing GIF", "https://media.giphy.com/media/13CoXDiaCcCoyk/giphy.gif"),
-            Pair("👍 Thumbs Up GIF", "https://media.giphy.com/media/l3vR4CdLInXOhr3O0/giphy.gif"),
-            Pair("😮 Wow GIF", "https://media.giphy.com/media/26AHONQ79FdWZhAI0/giphy.gif")
+            "https://media.giphy.com/media/JIX9t2j0ZTN9S/giphy.gif",
+            "https://media.giphy.com/media/13CoXDiaCcCoyk/giphy.gif",
+            "https://media.giphy.com/media/l3vR4CdLInXOhr3O0/giphy.gif",
+            "https://media.giphy.com/media/26AHONQ79FdWZhAI0/giphy.gif",
+            "https://media.giphy.com/media/3o7TKSjRrfIPjeiVyM/giphy.gif",
+            "https://media.giphy.com/media/xT0xeJpnrWC4XWblWQ/giphy.gif"
         )
 
         val scroll = android.widget.ScrollView(context).apply {
@@ -316,43 +475,72 @@ class ComposeKeyboardView(context: Context, private val keyPressListener: (Strin
         
         val container = LinearLayout(context).apply {
             orientation = VERTICAL
-            setPadding(20, 20, 20, 20)
+            setPadding(10, 10, 10, 10)
         }
 
-        val title = android.widget.TextView(context).apply {
-            text = "Select a GIF to send (Internet required)"
-            setTextColor(Color.WHITE)
-            textSize = 16f
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 20)
-        }
-        container.addView(title)
-
-        for (gif in gifOptions) {
-            val btn = Button(context).apply {
-                text = gif.first
-                setTextColor(Color.WHITE)
-                background = createKeyBackground("#222222", currentBorderColor, false)
-                layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
-                    setMargins(0, 10, 0, 10)
-                }
-                
-                setOnTouchListener { _, event ->
-                    when (event.action) {
-                        MotionEvent.ACTION_DOWN -> {
-                            background = createKeyBackground(currentKeyBgColor, currentGlowColor, true)
-                        }
-                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                            background = createKeyBackground("#222222", currentBorderColor, false)
-                            if (event.action == MotionEvent.ACTION_UP) {
-                                (context as KeyboardService).sendGif(gif.second)
-                            }
-                        }
-                    }
-                    true
+        val rows = gifOptions.chunked(2)
+        for (rowItems in rows) {
+            val rowLayout = LinearLayout(context).apply {
+                orientation = HORIZONTAL
+                layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, 350).apply {
+                    setMargins(0, 0, 0, 10)
                 }
             }
-            container.addView(btn)
+            
+            for (gif in rowItems) {
+                val frame = android.widget.FrameLayout(context).apply {
+                    layoutParams = LayoutParams(0, LayoutParams.MATCH_PARENT, 1f).apply {
+                        setMargins(10, 0, 10, 0)
+                    }
+                    
+                    val imageView = android.widget.ImageView(context).apply {
+                        layoutParams = android.widget.FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+                        scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+                        
+                        // Use Glide to load GIF efficiently and reliably
+                        com.bumptech.glide.Glide.with(context)
+                            .asGif()
+                            .load(gif)
+                            .into(this)
+                    }
+                    
+                    val overlay = android.view.View(context).apply {
+                        layoutParams = android.widget.FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+                        background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
+                        isClickable = true
+                        
+                        setOnTouchListener { _, event ->
+                            when (event.action) {
+                                MotionEvent.ACTION_DOWN -> {
+                                    setBackgroundColor(Color.parseColor("#44FFFFFF"))
+                                }
+                                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                                    setBackgroundColor(Color.TRANSPARENT)
+                                    if (event.action == MotionEvent.ACTION_UP) {
+                                        android.widget.Toast.makeText(context, "Sending GIF...", android.widget.Toast.LENGTH_SHORT).show()
+                                        (context as KeyboardService).sendGif(gif)
+                                    }
+                                }
+                            }
+                            true
+                        }
+                    }
+                    
+                    addView(imageView)
+                    addView(overlay)
+                }
+                rowLayout.addView(frame)
+            }
+            
+            // Fill empty space if row has only 1 item
+            if (rowItems.size == 1) {
+                val empty = android.view.View(context).apply {
+                    layoutParams = LayoutParams(0, LayoutParams.MATCH_PARENT, 1f)
+                }
+                rowLayout.addView(empty)
+            }
+            
+            container.addView(rowLayout)
         }
 
         scroll.addView(container)
@@ -367,7 +555,7 @@ class ComposeKeyboardView(context: Context, private val keyPressListener: (Strin
         }
         if (key == "⇧" || key == "SHIFT") {
             isCaps = !isCaps
-            buildLayout()
+            updateCapsUI()
             return
         }
         
@@ -375,7 +563,7 @@ class ComposeKeyboardView(context: Context, private val keyPressListener: (Strin
         if (isCaps && key.length == 1 && !isSymbolMode) {
             keyPressListener(key) // Send the typed capital letter
             isCaps = false
-            buildLayout() // Revert to small letters
+            updateCapsUI() // Revert to small letters
             return
         }
 

@@ -8,6 +8,31 @@ import android.view.inputmethod.InputConnection
 class KeyboardService : InputMethodService() {
 
     private lateinit var keyboardView: ComposeKeyboardView
+    private var lastSpaceTime: Long = 0
+    private var currentComposingWord = ""
+    
+    // Combined dictionary for English, Hinglish, Nimadi, and Malvi
+    private val dictionary = listOf(
+        // English
+        "the", "be", "to", "of", "and", "a", "in", "that", "have", "I", 
+        "it", "for", "not", "on", "with", "he", "as", "you", "do", "at",
+        "this", "but", "his", "by", "from", "they", "we", "say", "her", "she",
+        "or", "an", "will", "my", "one", "all", "would", "there", "their", "what",
+        "so", "up", "out", "if", "about", "who", "get", "which", "go", "me",
+        "hello", "how", "are", "good", "morning", "night", "yes", "no", "ok", "okay",
+        "thanks", "thank", "please", "sorry", "love", "much", "time", "can", "know",
+        
+        // Hindi / Hinglish
+        "hi", "bro", "bhai", "kya", "kar", "raha", "hai", "kaise", "ho", "aaj",
+        "kal", "mera", "tera", "nahi", "haan", "yaar", "chal", "kaha", "idhar", 
+        "udhar", "jaldi", "aao", "karo", "mujhe", "tujhe", "hum", "tum", "aap", "baat",
+        
+        // Nimadi & Malvi (Regional)
+        "kai", "kathe", "jaano", "aayo", "choro", "chori", "kha", "pivo", "bhari", 
+        "motiyar", "dikra", "kahu", "padio", "jaye", "karto", "kay", "katha", 
+        "jana", "aana", "bhaya", "dada", "bhiya", "bataw", "riyo", "he", "ni", 
+        "tharo", "maro", "hove", "aai", "gai", "dikro" "kar" "rayu"
+    )
 
     override fun onCreateInputView(): View {
         keyboardView = ComposeKeyboardView(this) { key ->
@@ -41,7 +66,15 @@ class KeyboardService : InputMethodService() {
                 ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
             }
             "SPACE", "English(India)" -> {
-                ic.commitText(" ", 1)
+                val now = System.currentTimeMillis()
+                if (now - lastSpaceTime < 500) {
+                    ic.deleteSurroundingText(1, 0)
+                    ic.commitText(". ", 1)
+                    lastSpaceTime = 0
+                } else {
+                    ic.commitText(" ", 1)
+                    lastSpaceTime = now
+                }
             }
             "⇧", "SHIFT", "abc", "!#1" -> {
                 // Handled internally by ComposeKeyboardView
@@ -50,10 +83,72 @@ class KeyboardService : InputMethodService() {
                 val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
                 imm.showInputMethodPicker()
             }
+            "﹀" -> {
+                requestHideSelf(0)
+            }
             else -> {
                 ic.commitText(key, 1)
             }
         }
+        
+        updateCapsState(ic)
+    }
+
+    override fun onUpdateSelection(oldSelStart: Int, oldSelEnd: Int, newSelStart: Int, newSelEnd: Int, candidatesStart: Int, candidatesEnd: Int) {
+        super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
+        currentInputConnection?.let { 
+            updateCapsState(it)
+            checkSuggestions(it)
+        }
+    }
+
+    private fun checkSuggestions(ic: InputConnection) {
+        if (!this::keyboardView.isInitialized) return
+        
+        val textBefore = ic.getTextBeforeCursor(20, 0) ?: ""
+        // Get the last alphabetical word before cursor
+        val lastWordMatch = Regex("([a-zA-Z]+)$").find(textBefore)
+        
+        if (lastWordMatch != null) {
+            currentComposingWord = lastWordMatch.value
+            val prefix = currentComposingWord.lowercase()
+            
+            // Generate suggestions matching the prefix (but not the exact prefix itself)
+            val suggestions = dictionary
+                .filter { it.lowercase().startsWith(prefix) && it.lowercase() != prefix }
+                .take(3)
+                
+            // Capitalize suggestion if user is typing with caps
+            val formattedSuggestions = suggestions.map { word ->
+                if (currentComposingWord[0].isUpperCase()) {
+                    word.replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.getDefault()) else it.toString() }
+                } else {
+                    word
+                }
+            }
+            keyboardView.updateSuggestions(formattedSuggestions)
+        } else {
+            currentComposingWord = ""
+            keyboardView.updateSuggestions(emptyList())
+        }
+    }
+
+    fun commitSuggestion(word: String) {
+        val ic = currentInputConnection ?: return
+        if (currentComposingWord.isNotEmpty()) {
+            ic.deleteSurroundingText(currentComposingWord.length, 0)
+        }
+        ic.commitText("$word ", 1)
+        currentComposingWord = ""
+        keyboardView.updateSuggestions(emptyList())
+    }
+
+    private fun updateCapsState(ic: InputConnection) {
+        if (!this::keyboardView.isInitialized) return
+        
+        val textBefore = ic.getTextBeforeCursor(2, 0) ?: ""
+        val shouldCaps = textBefore.isEmpty() || textBefore.endsWith(". ") || textBefore.endsWith("? ") || textBefore.endsWith("! ") || textBefore.endsWith("\n")
+        keyboardView.setAutoCaps(shouldCaps)
     }
 
     fun sendGif(gifUrl: String) {
