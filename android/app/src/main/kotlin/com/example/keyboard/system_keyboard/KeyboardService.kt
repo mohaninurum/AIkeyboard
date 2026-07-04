@@ -21,6 +21,11 @@ class KeyboardService : InputMethodService() {
         return keyboardView
     }
 
+    override fun onStartInputView(info: android.view.inputmethod.EditorInfo?, restarting: Boolean) {
+        super.onStartInputView(info, restarting)
+        setInputView(onCreateInputView())
+    }
+
     private fun handleKey(key: String) {
         val ic: InputConnection? = currentInputConnection
         if (ic == null) return
